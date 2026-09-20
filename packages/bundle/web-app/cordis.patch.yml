@@ -109,6 +109,10 @@
     - id: workspace-files
       name: '@deepseek-ai/dsh-api-workspace-files'
 
+    # Session-scoped bridge from the Insight workbench to the current preset's MCP tools.
+    - id: insight-controller
+      name: '@deepseek-ai/dsh-api-insight-controller'
+
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
     - id: settings-controller
@@ -242,6 +246,9 @@
     # The right Sidebar's workspace file tree tab type.
     - id: ui-sidebar-files
       name: '@deepseek-ai/dsh-client-ui-sidebar-files'
+
+    - id: ui-insight-workbench
+      name: '@deepseek-ai/dsh-client-ui-insight-workbench'
 
     - id: ui-settings
       name: '@deepseek-ai/dsh-client-ui-settings'

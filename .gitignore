@@ -45,5 +45,7 @@ apps/web/dist/
 .worktrees/
 worktrees/
 .agents/worktrees/
+.insight/
+insight-uploads/
 .typert-*/
 native/system/test/bin/

@@ -93,6 +93,7 @@
     { "path": "./packages/client/ui-sidebar-documentpreview/tsconfig.client.json" },
     { "path": "./packages/client/ui-sidebar-browser" },
     { "path": "./packages/client/ui-sidebar-files" },
+    { "path": "./packages/client/ui-insight-workbench" },
     { "path": "./packages/client/ui-jobs" },
     { "path": "./packages/client/ui-schedule" },
     { "path": "./packages/client/ui-directory-picker-browse" },
@@ -120,6 +121,7 @@
     { "path": "./packages/client/ui-session" },
     { "path": "./packages/client/resources" },
     { "path": "./packages/api/workspace-files/tsconfig.client.json" },
+    { "path": "./packages/api/insight-controller/tsconfig.client.json" },
     { "path": "./packages/client/web" },
     { "path": "./packages/context/file-reference" },
     { "path": "./apps/web" }
