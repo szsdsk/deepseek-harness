@@ -18,7 +18,7 @@ function fixture(execute: (request: { name: string; arguments: unknown }) => Pro
   roots.push(ctx)
   ctx.provide('tools', { execute } as never)
   const controller = new InsightController(ctx)
-  const agent = { id: 'session-1', status: 'idle' } as unknown as Agent
+  const agent = { id: 'session-1', status: 'idle' } as Agent
   return { controller, agent }
 }
 

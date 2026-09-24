@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-insight-workbench",
   "description": "Visual analytics workbench for InsightAgent sessions",
-  "version": "0.1.6-alpha.2",
+  "version": "0.1.7-alpha.1",
   "publishConfig": { "access": "public" },
   "repository": { "type": "git", "url": "git+https://github.com/deepseek-ai/deepseek-harness.git", "directory": "packages/client/ui-insight-workbench" },
   "type": "module",

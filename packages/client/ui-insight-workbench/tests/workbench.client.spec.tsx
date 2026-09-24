@@ -42,7 +42,7 @@ function mount(overrides: Partial<InsightInjected> = {}) {
   // The component only consumes these runtime props; other slot facilities are not used.
   const runtime = {
     sessionId: SessionId('insight-test'),
-    useSessions: selector => selector({ byId: {}, ids: [], phase: 'ready', subagentsByParent: {}, jobsBySession: {} }),
+    useSessions: selector => selector({ byId: {}, ids: [], phase: 'ready', projectionsBySession: {} }),
     t: key => en[key as keyof typeof en],
   } as Pick<ComponentProps<typeof Workbench>, 'sessionId' | 'useSessions' | 't'>
   render(<Workbench {...runtime as ComponentProps<typeof Workbench>} {...api} />)
