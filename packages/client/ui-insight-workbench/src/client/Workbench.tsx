@@ -98,6 +98,7 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
   const [path, setPath] = useState('')
   const [kind, setKind] = useState<SourceKind>('csv')
   const [source, setSource] = useState<SourceInfo>()
+  const [sourceReady, setSourceReady] = useState(false)
   const [relationList, setRelationList] = useState<RelationList>()
   const [relation, setRelation] = useState('')
   const [schemas, setSchemas] = useState<Record<string, RelationSchema>>({})
@@ -125,9 +126,11 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
   const chart = useRef<echarts.ECharts | null>(null)
   const activeRequest = useRef<AbortController | null>(null)
 
-  const allFields = useMemo(() => Object.values(schemas).flatMap(schema => (
+  const allFields = useMemo(() => Object.values(schemas).filter(schema => (
+    schema.relation === relation || schema.relation === joinRelation
+  )).flatMap(schema => (
     schema.columns.map(column => ({ relation: schema.relation, column }))
-  )), [schemas])
+  )), [schemas, relation, joinRelation])
   const primaryFields = schemas[relation]?.columns ?? []
   const joinFields = schemas[joinRelation]?.columns ?? []
 
@@ -189,40 +192,50 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
   }, [result])
 
   useEffect(() => {
-    if (source === undefined) return
+    if (source === undefined || !sourceReady) return
     const controller = new AbortController()
     void relations(source.source_id, controller.signal).then((list) => {
+      if (controller.signal.aborted) return
       setRelationList(list)
       setRelation(current => current || list.relations[0] || '')
     }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(message(reason)) })
     return () => { controller.abort() }
-  }, [source, relations])
+  }, [source, sourceReady, relations])
 
   useEffect(() => {
-    if (source === undefined || relation === '' || schemas[relation] !== undefined) return
+    if (source === undefined || !sourceReady || relation === '' || schemas[relation] !== undefined) return
     const controller = new AbortController()
     void describe(source.source_id, relation, controller.signal)
-      .then((schema) => { setSchemas(current => ({ ...current, [relation]: schema })) })
+      .then((schema) => { if (!controller.signal.aborted) setSchemas(current => ({ ...current, [relation]: schema })) })
       .catch((reason: unknown) => { if (!controller.signal.aborted) setError(message(reason)) })
     return () => { controller.abort() }
-  }, [source, relation, schemas, describe])
+  }, [source, sourceReady, relation, schemas, describe])
 
   useEffect(() => {
-    if (source === undefined || joinRelation === '' || schemas[joinRelation] !== undefined) return
+    if (source === undefined || !sourceReady || joinRelation === '' || schemas[joinRelation] !== undefined) return
     const controller = new AbortController()
     void describe(source.source_id, joinRelation, controller.signal)
-      .then((schema) => { setSchemas(current => ({ ...current, [joinRelation]: schema })) })
+      .then((schema) => { if (!controller.signal.aborted) setSchemas(current => ({ ...current, [joinRelation]: schema })) })
       .catch((reason: unknown) => { if (!controller.signal.aborted) setError(message(reason)) })
     return () => { controller.abort() }
-  }, [source, joinRelation, schemas, describe])
+  }, [source, sourceReady, joinRelation, schemas, describe])
 
   const importSource = async (): Promise<void> => {
-    setOperation('import'); setError(undefined)
+    if (activeRequest.current !== null || agentRunning) return
+    setOperation('import'); setError(undefined); setSaved(false)
     const controller = new AbortController()
     activeRequest.current = controller
     try {
       const next = await register(path.trim(), kind, controller.signal)
-      setSource(next); setRelationList(undefined); setSchemas({}); setRelation(''); setJoinRelation('')
+      controller.signal.throwIfAborted()
+      const sameSource = source !== undefined && source.path === path.trim() && source.kind === kind
+      setSource(next); setSourceReady(true); setRelationList(undefined); setSchemas({})
+      if (!sameSource) {
+        setRelation(''); setDimensions([]); setMetrics([])
+        setJoinRelation(''); setJoinKind('left'); setJoinLeft(''); setJoinRight('')
+        setFilterField(''); setFilterOperator('eq'); setFilterValue('')
+        setSortColumn(''); setSortDirection('desc'); setLimit(500)
+      }
       if (result !== undefined) setHistorical(true)
     } catch (reason) {
       if (!controller.signal.aborted) setError(message(reason))
@@ -252,13 +265,14 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
       left: { relation, column: joinLeft },
       right: { relation: joinRelation, column: joinRight },
     } : undefined
-    const selectedFilter = allFields.find(field => fieldKey(field) === filterField)
+    const [filterRelation, filterColumn] = filterField.split('\u0000')
+    const selectedFilter = filterRelation && filterColumn ? { relation: filterRelation, column: filterColumn } : undefined
     const filters = selectedFilter === undefined
       ? []
       : filterOperator === 'is_null' || filterOperator === 'not_null'
-        ? [{ field: { relation: selectedFilter.relation, column: selectedFilter.column.name }, operator: filterOperator }]
+        ? [{ field: selectedFilter, operator: filterOperator }]
         : filterValue === '' ? [] : [{
-          field: { relation: selectedFilter.relation, column: selectedFilter.column.name },
+          field: selectedFilter,
           operator: filterOperator,
           value: filterOperator === 'in' ? filterValue.split(',').map(item => item.trim()) : filterValue,
         }]
@@ -282,12 +296,17 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
   }
 
   const run = async (): Promise<void> => {
-    if (source === undefined || relation === '' || metrics.length === 0) return
+    if (activeRequest.current !== null || agentRunning || source === undefined || relation === '' || metrics.length === 0) return
     setOperation('analysis'); setError(undefined); setSaved(false)
     const controller = new AbortController()
     activeRequest.current = controller
     try {
-      const next = await execute(source.source_id, buildSpec(), controller.signal)
+      const registered = await register(source.path, source.kind, controller.signal)
+      controller.signal.throwIfAborted()
+      setSource(registered)
+      if (registered.fingerprint !== source.fingerprint) setHistorical(true)
+      const next = await execute(registered.source_id, buildSpec(), controller.signal)
+      controller.signal.throwIfAborted()
       setResult(next); setHistorical(false)
     } catch (reason) {
       if (!controller.signal.aborted) setError(message(reason))
@@ -314,6 +333,11 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
   ]
   const saveProject = async (): Promise<void> => {
     try { await save(project()); setSaved(true); setError(undefined) }
+    catch (reason) { setError(message(reason)) }
+  }
+  const explainResult = async (): Promise<void> => {
+    if (result === undefined || busy || agentRunning || historical || !result.verified) return
+    try { await explain(result.query_id); setError(undefined) }
     catch (reason) { setError(message(reason)) }
   }
   const exportCsv = (): void => {
@@ -353,6 +377,7 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
       {source !== undefined && <>
         <p className={css.meta}>{source.path} · {source.fingerprint.slice(0, 12)}</p>
         {source.warnings.map(item => <p key={item} className={css.warning}>{item}</p>)}
+        {!sourceReady && <p className={css.meta}>{t('source.restore')}</p>}
       </>}
     </section>
 
@@ -451,13 +476,13 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
       <div className={css.resultHeader}>
         <h2>{t('result.title')}</h2>
         {result !== undefined && <div className={css.actions}>
-          <button type="button" onClick={() => { void saveProject() }}>{t('action.save')}</button>
+          <button type="button" disabled={busy} onClick={() => { void saveProject() }}>{t('action.save')}</button>
           <button type="button" onClick={exportCsv}>{t('action.csv')}</button>
           {chartType !== 'table' && <button type="button" onClick={exportPng}>{t('action.png')}</button>}
           <button
             type="button"
-            disabled={!result.verified || historical || agentRunning}
-            onClick={() => { void explain(result.query_id) }}
+            disabled={!result.verified || historical || busy || agentRunning}
+            onClick={() => { void explainResult() }}
           >{t('action.explain')}</button>
         </div>}
       </div>

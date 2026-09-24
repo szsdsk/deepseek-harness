@@ -2,10 +2,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap { insightWorkbench: InsightWorkbenchKey } }
 
+/** Chinese text for the Insight workbench's local UI namespace. */
 export const zh = {
   'type.label': '分析', 'guide.title': '分析工作台', 'guide.description': '拖拽字段、运行查询并查看证据', 'header.open': '打开分析工作台',
   'source.title': '数据源', 'source.path': '工作区内的数据文件路径', 'source.register': '导入数据', 'source.kind': '格式',
   'source.csv': 'CSV', 'source.xlsx': 'XLSX', 'source.sqlite': 'SQLite', 'source.duckdb': 'DuckDB',
+  'source.restore': '点击“导入数据”重新连接保存的数据文件并恢复分析配置；历史结果可继续查看和导出。',
   'fields.title': '数据与字段', 'fields.relation': '主表', 'fields.loading': '正在读取字段…',
   'config.title': '分析配置', 'config.dimension': '维度', 'config.metric': '指标', 'config.filter': '过滤', 'config.drop': '拖拽字段到这里，或点击左侧字段',
   'config.aggregation': '聚合', 'config.limit': 'Top N / 行数上限', 'config.run': '运行分析', 'config.running': '正在分析…', 'config.clear': '清空配置',
@@ -22,11 +24,14 @@ export const zh = {
   'action.explainPromptPrefix': '请解释分析结果', 'action.explainPromptSuffix': '。先调用 mcp__insight__get_query_result 读取并确认当前会话的已校验结果，再通过 mcp__insight__submit_analysis 提交解释、关键发现和后续分析建议。',
   'status.saved': '已保存到工作区 .insight/', 'error.title': '分析失败', 'tool.query': 'Insight 查询', 'tool.analysis': 'Insight 解读',
 } as const
+/** Keys shared by both Insight workbench language dictionaries. */
 export type InsightWorkbenchKey = keyof typeof zh
+/** English text for the Insight workbench's local UI namespace. */
 export const en: Record<InsightWorkbenchKey, string> = {
   'type.label': 'Analysis', 'guide.title': 'Analysis workbench', 'guide.description': 'Drag fields, run a query, and inspect its evidence', 'header.open': 'Open analysis workbench',
   'source.title': 'Data source', 'source.path': 'Data file path inside the workspace', 'source.register': 'Import data', 'source.kind': 'Format',
   'source.csv': 'CSV', 'source.xlsx': 'XLSX', 'source.sqlite': 'SQLite', 'source.duckdb': 'DuckDB',
+  'source.restore': 'Import the saved data file to reconnect and restore the analysis configuration. Historical results remain available to view and export.',
   'fields.title': 'Data and fields', 'fields.relation': 'Primary table', 'fields.loading': 'Reading fields…',
   'config.title': 'Analysis configuration', 'config.dimension': 'Dimensions', 'config.metric': 'Metrics', 'config.filter': 'Filter', 'config.drop': 'Drop fields here, or click a field on the left',
   'config.aggregation': 'Aggregation', 'config.limit': 'Top N / row limit', 'config.run': 'Run analysis', 'config.running': 'Running…', 'config.clear': 'Clear configuration',

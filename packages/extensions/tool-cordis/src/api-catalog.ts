@@ -1166,6 +1166,54 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'insightController',
+    summary: 'Session-scoped bridge from the browser workbench to the registered Insight MCP tools.',
+    description: 'Session-scoped bridge from the browser workbench to the registered Insight MCP tools.',
+    methods: [
+      {
+        signature: '@Remote register(agent: Agent, path: string, kind: SourceKind, signal: AbortSignal): Promise<SourceInfo>',
+        description: 'Register a data file through the Session\'s Insight MCP.',
+        parameters: [{ name: 'agent', description: 'Agent whose workspace and MCP own the source.' }, { name: 'path', description: 'Data file path inside that workspace.' }, { name: 'kind', description: 'File format to import.' }, { name: 'signal', description: 'Cancellation signal for the tool call.' }],
+        returns: 'Current source identifier, fingerprint, and import warnings.',
+      },
+      {
+        signature: '@Remote relations(agent: Agent, sourceId: string, signal: AbortSignal): Promise<RelationList>',
+        description: 'Discover relations in a registered source.',
+        parameters: [{ name: 'agent', description: 'Agent whose MCP owns the source.' }, { name: 'sourceId', description: 'Identifier returned by register in the current MCP runtime.' }, { name: 'signal', description: 'Cancellation signal for the tool call.' }],
+        returns: 'Available relation names and discovery warnings.',
+      },
+      {
+        signature: '@Remote describe(agent: Agent, sourceId: string, relation: string, signal: AbortSignal): Promise<RelationSchema>',
+        description: 'Read the schema used to configure a structured analysis.',
+        parameters: [{ name: 'agent', description: 'Agent whose MCP owns the source.' }, { name: 'sourceId', description: 'Current registered source identifier.' }, { name: 'relation', description: 'Relation name returned by discovery.' }, { name: 'signal', description: 'Cancellation signal for the tool call.' }],
+        returns: 'Column names, types, nullability, and warnings.',
+      },
+      {
+        signature: '@Remote async execute(agent: Agent, sourceId: string, spec: AnalysisSpec, signal: AbortSignal): Promise<AnalysisResult>',
+        description: 'Execute and verify one analysis; reject overlapping analysis or a busy Agent.',
+        parameters: [{ name: 'agent', description: 'Idle Agent whose MCP executes and verifies the query.' }, { name: 'sourceId', description: 'Current registered source identifier.' }, { name: 'spec', description: 'Structured query configuration validated by Insight MCP.' }, { name: 'signal', description: 'Cancellation signal shared by execution and verification.' }],
+        returns: 'Executed rows and query evidence after successful verification.',
+      },
+      {
+        signature: '@Remote result(agent: Agent, queryId: string, signal: AbortSignal): Promise<AnalysisResult>',
+        description: 'Read a result retained by the current MCP runtime without rerunning SQL.',
+        parameters: [{ name: 'agent', description: 'Agent whose MCP owns the result.' }, { name: 'queryId', description: 'Successful query identifier; historical identifiers may expire.' }, { name: 'signal', description: 'Cancellation signal for the tool call.' }],
+        returns: 'Retained query rows and metadata supplied by Insight MCP.',
+      },
+      {
+        signature: '@Remote async save(agent: Agent, project: InsightProject): Promise<void>',
+        description: 'Atomically replace the Session\'s workspace analysis document.',
+        parameters: [{ name: 'agent', description: 'Agent whose workspace and id determine the storage path.' }, { name: 'project', description: 'Configuration and historical snapshot to persist, not new query evidence.' }],
+      },
+      {
+        signature: '@Remote async load(agent: Agent): Promise<InsightProject | null>',
+        description: 'Read saved analysis state without registering data or executing a query.',
+        parameters: [{ name: 'agent', description: 'Agent whose workspace and id determine the storage path.' }],
+        returns: 'Saved project, or null when absent; malformed or unsupported files reject.',
+      },
+    ],
+  },
+  {
     key: 'inspector',
     summary: 'Shared Host/Client service façade over the realm\'s source publisher.',
     description: 'Shared Host/Client service façade over the realm\'s source publisher.',
@@ -4061,6 +4109,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
   },
   {
+    name: 'Aggregation',
+    declaration: 'export type Aggregation = \'sum\' | \'avg\' | \'min\' | \'max\' | \'count\' | \'count_distinct\';',
+  },
+  {
+    name: 'AnalysisResult',
+    declaration: 'export interface AnalysisResult {\n    readonly query_id: string;\n    readonly source_id: string;\n    readonly source_fingerprint: string;\n    readonly sql: string;\n    readonly columns: readonly string[];\n    readonly rows: readonly (readonly JsonValue[])[];\n    readonly row_count: number;\n    readonly truncated: boolean;\n    readonly elapsed_ms: number;\n    readonly verified: boolean;\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'AnalysisSpec',
+    declaration: 'export interface AnalysisSpec {\n    readonly relation: string;\n    readonly join?: JoinSpec;\n    readonly dimensions: readonly DimensionSpec[];\n    readonly metrics: readonly MetricSpec[];\n    readonly filters: readonly FilterSpec[];\n    readonly sort: readonly SortSpec[];\n    readonly limit: number;\n}',
+  },
+  {
     name: 'ApiKeyRecord',
     declaration: 'export interface ApiKeyRecord {\n    readonly kind: \'api-key\';\n    readonly key?: string;\n    readonly env?: Readonly<Record<string, string>>;\n}',
   },
@@ -4255,6 +4315,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CollectedOutput',
     declaration: 'export interface CollectedOutput {\n    text: string;\n    truncated: boolean;\n    spillPath?: string;\n}',
+  },
+  {
+    name: 'ColumnInfo',
+    declaration: 'export interface ColumnInfo {\n    readonly name: string;\n    readonly type: string;\n    readonly nullable: boolean;\n}',
   },
   {
     name: 'CommandDefinition',
@@ -4549,6 +4613,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface DiffResultView {\n    card: \'diff\';\n    title?: string;\n    diffs: FileDiff[];\n}',
   },
   {
+    name: 'DimensionSpec',
+    declaration: 'export interface DimensionSpec {\n    readonly field: FieldRef;\n    readonly alias?: string;\n    readonly date_grain?: \'day\' | \'month\' | \'year\';\n}',
+  },
+  {
     name: 'DirectoryEntry',
     declaration: 'export interface DirectoryEntry {\n    name: string;\n    path: string;\n    hidden: boolean;\n}',
   },
@@ -4673,6 +4741,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export const enum FiberState {\n    PENDING,\n    LOADING,\n    ACTIVE,\n    FAILED,\n    DISPOSED,\n    UNLOADING\n}',
   },
   {
+    name: 'FieldRef',
+    declaration: 'export interface FieldRef {\n    readonly relation: string;\n    readonly column: string;\n}',
+  },
+  {
     name: 'FileAttachmentRef',
     declaration: 'export interface FileAttachmentRef {\n    attachmentId: AttachmentId;\n    name: string;\n    bytes: number;\n}',
   },
@@ -4699,6 +4771,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FileUploadValue',
     declaration: 'export interface FileUploadValue {\n    readonly receiptId: FileUploadReceiptId;\n    readonly file: FileAttachmentRef;\n}',
+  },
+  {
+    name: 'FilterOperator',
+    declaration: 'export type FilterOperator = \'eq\' | \'ne\' | \'gt\' | \'gte\' | \'lt\' | \'lte\' | \'contains\' | \'in\' | \'is_null\' | \'not_null\';',
+  },
+  {
+    name: 'FilterSpec',
+    declaration: 'export interface FilterSpec {\n    readonly field: FieldRef;\n    readonly operator: FilterOperator;\n    readonly value?: JsonValue;\n}',
   },
   {
     name: 'FinishReason',
@@ -4849,6 +4929,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type IndexInjectionPlacement = \'head\' | \'body\';',
   },
   {
+    name: 'InsightProject',
+    declaration: 'export interface InsightProject {\n    readonly formatVersion: 1;\n    readonly source?: SourceInfo;\n    readonly analysis?: AnalysisSpec;\n    readonly chart?: {\n        readonly type: \'table\' | \'bar\' | \'line\' | \'scatter\';\n        readonly title: string;\n        readonly x?: string;\n        readonly y?: string;\n    };\n    readonly snapshot?: AnalysisResult;\n}',
+  },
+  {
     name: 'InspectorId',
     declaration: 'export type InspectorId<Role extends string> = Branded<Role>;',
   },
@@ -4939,6 +5023,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'JobStatus',
     declaration: 'export type JobStatus = \'running\' | \'stopping\' | \'completed\' | \'killed\' | \'failed\';',
+  },
+  {
+    name: 'JoinKind',
+    declaration: 'export type JoinKind = \'inner\' | \'left\';',
+  },
+  {
+    name: 'JoinSpec',
+    declaration: 'export interface JoinSpec {\n    readonly relation: string;\n    readonly kind: JoinKind;\n    readonly left: FieldRef;\n    readonly right: FieldRef;\n}',
   },
   {
     name: 'JsonSchemaNode',
@@ -5187,6 +5279,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'MessageSourceMap',
     declaration: 'export interface MessageSourceMap {\n    user: {\n        kind: \'user\';\n    };\n    plugin: {\n        kind: \'plugin\';\n        plugin: string;\n    } & ContextFormed;\n    model: ModelMessageSource;\n    tool: ToolMessageSource;\n}',
+  },
+  {
+    name: 'MetricSpec',
+    declaration: 'export interface MetricSpec {\n    readonly aggregation: Aggregation;\n    readonly field?: FieldRef;\n    readonly alias: string;\n}',
   },
   {
     name: 'ModelCatalog',
@@ -5495,6 +5591,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'RelationList',
+    declaration: 'export interface RelationList {\n    readonly source_id: string;\n    readonly relations: readonly string[];\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'RelationSchema',
+    declaration: 'export interface RelationSchema {\n    readonly source_id: string;\n    readonly relation: string;\n    readonly columns: readonly ColumnInfo[];\n    readonly warnings: readonly string[];\n}',
   },
   {
     name: 'Reload',
@@ -6303,6 +6407,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillViewOptions',
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
+  },
+  {
+    name: 'SortSpec',
+    declaration: 'export interface SortSpec {\n    readonly column: string;\n    readonly direction: \'asc\' | \'desc\';\n}',
+  },
+  {
+    name: 'SourceInfo',
+    declaration: 'export interface SourceInfo {\n    readonly source_id: string;\n    readonly kind: SourceKind;\n    readonly path: string;\n    readonly fingerprint: string;\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'SourceKind',
+    declaration: 'export type SourceKind = \'csv\' | \'xlsx\' | \'sqlite\' | \'duckdb\';',
   },
   {
     name: 'SpawnTeammateRequest',

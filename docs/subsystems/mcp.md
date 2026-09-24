@@ -119,6 +119,80 @@ MCP prompt templates, human-input elicitation, task-based execution, and resourc
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxinsightcontroller--insightcontroller"></a>
+
+### `ctx.insightController` — `InsightController`
+
+Session-scoped bridge from the browser workbench to the registered Insight MCP tools.
+
+```ts cordis-catalog
+/**
+ * Register a data file through the Session's Insight MCP.
+ * @param agent - Agent whose workspace and MCP own the source.
+ * @param path - Data file path inside that workspace.
+ * @param kind - File format to import.
+ * @param signal - Cancellation signal for the tool call.
+ * @returns Current source identifier, fingerprint, and import warnings.
+ */
+@Remote register(agent: Agent, path: string, kind: SourceKind, signal: AbortSignal): Promise<SourceInfo>
+
+/**
+ * Discover relations in a registered source.
+ * @param agent - Agent whose MCP owns the source.
+ * @param sourceId - Identifier returned by register in the current MCP runtime.
+ * @param signal - Cancellation signal for the tool call.
+ * @returns Available relation names and discovery warnings.
+ */
+@Remote relations(agent: Agent, sourceId: string, signal: AbortSignal): Promise<RelationList>
+
+/**
+ * Read the schema used to configure a structured analysis.
+ * @param agent - Agent whose MCP owns the source.
+ * @param sourceId - Current registered source identifier.
+ * @param relation - Relation name returned by discovery.
+ * @param signal - Cancellation signal for the tool call.
+ * @returns Column names, types, nullability, and warnings.
+ */
+@Remote describe(agent: Agent, sourceId: string, relation: string, signal: AbortSignal): Promise<RelationSchema>
+
+/**
+ * Execute and verify one analysis; reject overlapping analysis or a busy Agent.
+ * @param agent - Idle Agent whose MCP executes and verifies the query.
+ * @param sourceId - Current registered source identifier.
+ * @param spec - Structured query configuration validated by Insight MCP.
+ * @param signal - Cancellation signal shared by execution and verification.
+ * @returns Executed rows and query evidence after successful verification.
+ */
+@Remote async execute(agent: Agent, sourceId: string, spec: AnalysisSpec, signal: AbortSignal): Promise<AnalysisResult>
+
+/**
+ * Read a result retained by the current MCP runtime without rerunning SQL.
+ * @param agent - Agent whose MCP owns the result.
+ * @param queryId - Successful query identifier; historical identifiers may expire.
+ * @param signal - Cancellation signal for the tool call.
+ * @returns Retained query rows and metadata supplied by Insight MCP.
+ */
+@Remote result(agent: Agent, queryId: string, signal: AbortSignal): Promise<AnalysisResult>
+
+/**
+ * Atomically replace the Session's workspace analysis document.
+ * @param agent - Agent whose workspace and id determine the storage path.
+ * @param project - Configuration and historical snapshot to persist, not new query evidence.
+ */
+@Remote async save(agent: Agent, project: InsightProject): Promise<void>
+
+/**
+ * Read saved analysis state without registering data or executing a query.
+ * @param agent - Agent whose workspace and id determine the storage path.
+ * @returns Saved project, or null when absent; malformed or unsupported files reject.
+ */
+@Remote async load(agent: Agent): Promise<InsightProject | null>
+```
+
+Types: [Agent](core.md)
+
+Source: [`packages/api/insight-controller/src/index.ts`](../../packages/api/insight-controller/src/index.ts)
+
 <a id="ctxmcpresources--mcpresourceruntime"></a>
 
 ### `ctx.mcpResources` — `McpResourceRuntime`
