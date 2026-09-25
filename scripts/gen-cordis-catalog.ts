@@ -63,6 +63,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   profileContext: 'boot.md',
   hmr: 'boot.md',
   mcpResources: 'mcp.md',
+  insightController: 'mcp.md',
   agentLoop: 'core.md',
   agentDefaultModel: 'core.md',
   agentPresets: 'core.md',
@@ -803,6 +804,13 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  SourceInfo: 'Insight source registration contract is owned by packages/api/insight-controller/src/types.ts',
+  SourceKind: 'Insight supported source formats are owned by packages/api/insight-controller/src/types.ts',
+  RelationList: 'Insight relation discovery contract is owned by packages/api/insight-controller/src/types.ts',
+  RelationSchema: 'Insight relation schema contract is owned by packages/api/insight-controller/src/types.ts',
+  AnalysisResult: 'Insight verified result contract is owned by packages/api/insight-controller/src/types.ts',
+  AnalysisSpec: 'Insight deterministic analysis contract is owned by packages/api/insight-controller/src/types.ts',
+  InsightProject: 'Insight saved project contract is owned by packages/api/insight-controller/src/types.ts',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',
   ConnectionRequestRejection: 'transport rejection status is owned by packages/client/connection/src/rpc.ts',
   ConnectionTrustRequest: 'transport authentication input is owned by packages/client/connection/src/rpc.ts',

@@ -141,6 +141,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Connection-owned providers serve shared resource tools in the calling agent scope.',
   },
   {
+    key: 'insightController',
+    pkg: 'api-insight-controller',
+    title: 'Session-scoped Insight analysis bridge',
+    mode: 'core',
+    consumers: ['client-ui-insight-workbench'],
+    note: 'The browser workbench reaches registered Insight MCP tools through Remote calls; the bridge serializes analysis and returns only query results that the MCP verifies.',
+  },
+  {
     key: 'browserUse',
     pkg: 'browser-use',
     title: 'Browser-use provider registration',
