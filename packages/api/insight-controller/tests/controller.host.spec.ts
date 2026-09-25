@@ -13,6 +13,8 @@ const result: AnalysisResult = {
   columns: ['orders'], rows: [[2]], row_count: 1, truncated: false, elapsed_ms: 1, verified: false, warnings: [],
 }
 
+function mcp(value: unknown) { return { isError: false, content: [], value: { content: [], structuredContent: value } } }
+
 function fixture(execute: (request: { name: string; arguments: unknown }) => Promise<unknown>) {
   const ctx = new Context()
   roots.push(ctx)
@@ -22,11 +24,21 @@ function fixture(execute: (request: { name: string; arguments: unknown }) => Pro
   return { controller, agent }
 }
 
+it('returns the structured source payload from Insight MCP', async () => {
+  const source = { source_id: 'source-1', kind: 'xlsx', path: 'sales.xlsx', fingerprint: 'sha256:abc', warnings: [] }
+  const { controller, agent } = fixture(async () => mcp(source))
+  await expect(controller.register(agent, source.path, 'xlsx', new AbortController().signal)).resolves.toEqual(source)
+})
+
+it('reports missing structured MCP output instead of passing a malformed source to the UI', async () => {
+  const { controller, agent } = fixture(async () => ({ isError: false, content: [], value: { content: [] } }))
+  await expect(controller.register(agent, 'sales.xlsx', 'xlsx', new AbortController().signal))
+    .rejects.toThrow('returned no structured content')
+})
+
 it('returns rows only after the same query ID is verified by Insight MCP', async () => {
-  const execute = vi.fn(async ({ name }: { name: string; arguments: unknown }) => ({
-    isError: false, content: [],
-    value: name === 'mcp__insight__verify_query' ? { query_id: 'query-1', valid: true, warnings: ['checked'] } : result,
-  }))
+  const execute = vi.fn(async ({ name }: { name: string; arguments: unknown }) =>
+    mcp(name === 'mcp__insight__verify_query' ? { query_id: 'query-1', valid: true, warnings: ['checked'] } : result))
   const { controller, agent } = fixture(execute)
   await expect(controller.execute(agent, 'source-1', spec, new AbortController().signal)).resolves.toEqual({
     ...result, verified: true, warnings: ['checked'],
@@ -38,10 +50,8 @@ it('returns rows only after the same query ID is verified by Insight MCP', async
 })
 
 it('rejects unverified rows and releases the session for another analysis', async () => {
-  const execute = vi.fn(async ({ name }: { name: string }) => ({
-    isError: false, content: [], value: name === 'mcp__insight__verify_query'
-      ? { query_id: 'query-1', valid: false } : result,
-  }))
+  const execute = vi.fn(async ({ name }: { name: string }) =>
+    mcp(name === 'mcp__insight__verify_query' ? { query_id: 'query-1', valid: false } : result))
   const { controller, agent } = fixture(execute)
   const run = () => controller.execute(agent, 'source-1', spec, new AbortController().signal)
   await expect(run()).rejects.toThrow('Insight query verification failed')
@@ -57,6 +67,6 @@ it('refuses a concurrent analysis before it can call the MCP again', async () =>
   await expect(controller.execute(agent, 'source-1', spec, new AbortController().signal))
     .rejects.toThrow('already running')
   expect(execute).toHaveBeenCalledOnce()
-  pending.resolve({ isError: false, content: [], value: result })
+  pending.resolve(mcp(result))
   await expect(first).rejects.toThrow()
 })

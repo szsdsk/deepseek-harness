@@ -128,7 +128,11 @@ export class InsightController extends TypertRemoteService {
       const message = result.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
       throw new RemoteError('gateway/bad-request', message || `${name} failed`, {})
     }
-    return result.value as Value
+    const payload = result.value as { structuredContent?: Value } | null
+    if (payload?.structuredContent === undefined) {
+      throw new RemoteError('gateway/bad-request', `${name} returned no structured content`, {})
+    }
+    return payload.structuredContent
   }
 }
 
