@@ -20,6 +20,7 @@ interface MetricDraft extends Field { aggregation: Aggregation; alias: string }
 interface DimensionDraft extends Field { dateGrain: '' | 'day' | 'month' | 'year' }
 
 export interface InsightInjected {
+  upload(this: void, file: File, kind: SourceKind, signal: AbortSignal): Promise<string>
   register(this: void, path: string, kind: SourceKind, signal: AbortSignal): Promise<SourceInfo>
   relations(this: void, sourceId: string, signal: AbortSignal): Promise<RelationList>
   describe(this: void, sourceId: string, relation: string, signal: AbortSignal): Promise<RelationSchema>
@@ -40,6 +41,12 @@ function message(error: unknown): string {
 function fieldKey(field: Field): string { return `${field.relation}\u0000${field.column.name}` }
 function fieldLabel(field: Field): string { return `${field.relation}.${field.column.name}` }
 function numeric(type: string): boolean { return /int|decimal|numeric|double|float|real/iu.test(type) }
+function numericResultColumns(result: AnalysisResult): string[] {
+  return result.columns.filter((_, index) => {
+    const values = result.rows.map(row => row[index]).filter(value => value !== null && value !== undefined)
+    return values.length > 0 && values.every(value => typeof value === 'number' && Number.isFinite(value))
+  })
+}
 
 interface ChartProps {
   result: AnalysisResult
@@ -54,6 +61,10 @@ function Chart({ result, type, title, xColumn, yColumn, chartRef }: ChartProps):
   const element = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (element.current === null) return
+    const styles = getComputedStyle(element.current)
+    const foreground = styles.color || '#e5e7eb'
+    const muted = styles.getPropertyValue('--dsw-alias-label-secondary').trim() || foreground
+    const axis = styles.getPropertyValue('--dsw-alias-border-l3').trim() || muted
     const chart = echarts.init(element.current)
     chartRef.current = chart
     const xIndex = Math.max(0, result.columns.indexOf(xColumn))
@@ -64,9 +75,12 @@ function Chart({ result, type, title, xColumn, yColumn, chartRef }: ChartProps):
       : result.rows.map((_, index) => index + 1)
     const yValues = result.rows.map(row => row[yIndex])
     chart.setOption({
-      title: { text: title, subtext: result.query_id, left: 'center', textStyle: { fontSize: 14 }, subtextStyle: { fontSize: 10 } }, tooltip: {}, grid: { left: 48, right: 20, top: 68, bottom: 42 },
-      xAxis: { type: type === 'scatter' ? 'value' : 'category', data: type === 'scatter' ? undefined : xValues },
-      yAxis: { type: 'value' },
+      textStyle: { color: foreground },
+      title: { text: title, subtext: result.query_id, left: 'center', textStyle: { color: foreground, fontSize: 14 }, subtextStyle: { color: muted, fontSize: 10 } }, tooltip: {}, grid: { left: 48, right: 20, top: 68, bottom: 42 },
+      xAxis: { type: type === 'scatter' ? 'value' : 'category', data: type === 'scatter' ? undefined : xValues,
+        axisLabel: { color: muted }, axisLine: { lineStyle: { color: axis } } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, axisLine: { lineStyle: { color: axis } },
+        splitLine: { lineStyle: { color: axis } } },
       series: [{ name: result.columns[yIndex] ?? '', type, data: type === 'scatter' ? xValues.map((value, index) => [value, yValues[index]]) : yValues }],
     })
     const observer = new ResizeObserver(() => { chart.resize() })
@@ -93,10 +107,14 @@ function download(name: string, blob: Blob): void {
 }
 
 /** Session-bound visual analysis workbench. */
-export function Workbench({ sessionId, useSessions, register, relations, describe, execute, save, load, explain, t }: Props): ReactNode {
+export function Workbench({
+  sessionId, useSessions, upload, register, relations, describe, execute, save, load, explain, t,
+}: Props): ReactNode {
   const agentRunning = useSessions(state => state.byId[sessionId]?.running ?? false)
   const [path, setPath] = useState('')
   const [kind, setKind] = useState<SourceKind>('csv')
+  const [selectedFile, setSelectedFile] = useState<File>()
+  const fileInput = useRef<HTMLInputElement>(null)
   const [source, setSource] = useState<SourceInfo>()
   const [sourceReady, setSourceReady] = useState(false)
   const [relationList, setRelationList] = useState<RelationList>()
@@ -133,6 +151,7 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
   )), [schemas, relation, joinRelation])
   const primaryFields = schemas[relation]?.columns ?? []
   const joinFields = schemas[joinRelation]?.columns ?? []
+  const numericColumns = useMemo(() => result === undefined ? [] : numericResultColumns(result), [result])
 
   useEffect(() => {
     let active = true
@@ -188,8 +207,8 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
   useEffect(() => {
     if (result === undefined) return
     setChartX(current => result.columns.includes(current) ? current : result.columns[0] ?? '')
-    setChartY(current => result.columns.includes(current) ? current : result.columns[1] ?? result.columns[0] ?? '')
-  }, [result])
+    setChartY(current => numericColumns.includes(current) ? current : numericColumns[0] ?? '')
+  }, [result, numericColumns])
 
   useEffect(() => {
     if (source === undefined || !sourceReady) return
@@ -226,9 +245,13 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
     const controller = new AbortController()
     activeRequest.current = controller
     try {
-      const next = await register(path.trim(), kind, controller.signal)
+      const importPath = selectedFile === undefined ? path.trim() : await upload(selectedFile, kind, controller.signal)
       controller.signal.throwIfAborted()
-      const sameSource = source !== undefined && source.path === path.trim() && source.kind === kind
+      if (selectedFile !== undefined) { setPath(importPath); setSelectedFile(undefined) }
+      const next = await register(importPath, kind, controller.signal)
+      controller.signal.throwIfAborted()
+      const sameSource = source !== undefined && source.path === importPath && source.kind === kind
+      setPath(importPath); setSelectedFile(undefined)
       setSource(next); setSourceReady(true); setRelationList(undefined); setSchemas({})
       if (!sameSource) {
         setRelation(''); setDimensions([]); setMetrics([])
@@ -325,6 +348,10 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
     chart: { type: chartType, title: relation, x: chartX, y: chartY },
     ...(result === undefined ? {} : { snapshot: result }),
   })
+  const chartIssue = result === undefined || chartType === 'table' || result.rows.length === 0 ? undefined
+    : chartType === 'scatter' && (numericColumns.length < 2 || !numericColumns.includes(chartX) || !numericColumns.includes(chartY))
+      ? t('chart.scatterNumeric')
+      : !numericColumns.includes(chartY) ? t('chart.numericY') : undefined
   const outputColumns = [
     ...dimensions.map(item => item.dateGrain === ''
       ? item.column.name
@@ -366,10 +393,20 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
           <option value="sqlite">{t('source.sqlite')}</option>
           <option value="duckdb">{t('source.duckdb')}</option>
         </select>
-        <input value={path} onChange={(event) => { setPath(event.target.value) }} placeholder={t('source.path')} />
+        <input value={selectedFile?.name ?? path} onChange={(event) => { setSelectedFile(undefined); setPath(event.target.value) }} placeholder={t('source.path')} />
+        <input ref={fileInput} className={css.fileInput} type="file" accept=".csv,.xlsx,.sqlite,.db,.duckdb" aria-label={t('source.choose')} onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file === undefined) return
+          setSelectedFile(file)
+          const extension = file.name.split('.').at(-1)?.toLowerCase()
+          if (extension === 'csv' || extension === 'xlsx' || extension === 'sqlite' || extension === 'duckdb') setKind(extension)
+          else if (extension === 'db') setKind('sqlite')
+          event.target.value = ''
+        }} />
+        <button type="button" disabled={busy || agentRunning} onClick={() => { fileInput.current?.click() }}>{t('source.choose')}</button>
         <button
           type="button"
-          disabled={busy || agentRunning || path.trim() === ''}
+          disabled={busy || agentRunning || (selectedFile === undefined && path.trim() === '')}
           onClick={() => { void importSource() }}
         >{t('source.register')}</button>
         {operation === 'import' && <button type="button" onClick={() => { activeRequest.current?.abort() }}>{t('action.cancel')}</button>}
@@ -478,7 +515,7 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
         {result !== undefined && <div className={css.actions}>
           <button type="button" disabled={busy} onClick={() => { void saveProject() }}>{t('action.save')}</button>
           <button type="button" onClick={exportCsv}>{t('action.csv')}</button>
-          {chartType !== 'table' && <button type="button" onClick={exportPng}>{t('action.png')}</button>}
+          {chartType !== 'table' && <button type="button" disabled={chartIssue !== undefined || result.rows.length === 0} onClick={exportPng}>{t('action.png')}</button>}
           <button
             type="button"
             disabled={!result.verified || historical || busy || agentRunning}
@@ -495,7 +532,14 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
             disabled={result.truncated && type !== 'table'}
             data-active={chartType === type}
             key={type}
-            onClick={() => { setChartType(type) }}
+            onClick={() => {
+              setChartType(type)
+              if (type === 'scatter') {
+                const x = numericColumns.includes(chartX) ? chartX : numericColumns[0] ?? ''
+                setChartX(x)
+                setChartY(numericColumns.includes(chartY) && chartY !== x ? chartY : numericColumns.find(column => column !== x) ?? '')
+              }
+            }}
           >{t(`result.${type}`)}</button>
         ))}</div>
         {chartType !== 'table' && <div className={css.formGrid}>
@@ -516,7 +560,9 @@ export function Workbench({ sessionId, useSessions, register, relations, describ
           ? <p className={css.empty}>{t('result.noRows')}</p>
           : chartType === 'table'
             ? <ResultTable result={result} t={t} />
-            : <Chart result={result} type={chartType} title={relation} xColumn={chartX} yColumn={chartY} chartRef={chart} />}
+            : chartIssue !== undefined
+              ? <p className={css.empty} role="status">{chartIssue}</p>
+              : <Chart result={result} type={chartType} title={relation} xColumn={chartX} yColumn={chartY} chartRef={chart} />}
         <details className={css.evidence}>
           <summary>{t('result.sql')}</summary><code>{result.query_id}</code><pre>{result.sql}</pre>
           {result.warnings.map(item => <p key={item} className={css.warning}>{item}</p>)}

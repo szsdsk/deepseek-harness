@@ -2,6 +2,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-insight-controller/remote'
+import type {} from '@deepseek-ai/dsh-client-file-upload/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -15,7 +16,7 @@ import { ToolCard, type ToolCardInjected } from './ToolCard.tsx'
 import { InsightTitle } from './Title.tsx'
 import { Workbench, type InsightInjected } from './Workbench.tsx'
 
-export const inject = ['slots', 'locale', 'sessions', 'sidebarRight', 'sidebarRightTabs', 'remote', 'remote.insight']
+export const inject = ['slots', 'locale', 'sessions', 'sidebarRight', 'sidebarRightTabs', 'remote', 'remote.insight', 'fileUpload']
 const NS = 'insightWorkbench'
 
 function unwrap<Value>(result: { readonly ok: true; readonly value: Value } | { readonly ok: false; readonly error: unknown }): Value {
@@ -39,6 +40,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: INSIGHT_ID, locale: NS,
     inject: (sessionId: SessionId): InsightInjected => ({
+      upload: async (file: File, kind: SourceKind, signal: AbortSignal) => {
+        const uploaded = unwrap(await ctx.fileUpload.upload(sessionId, file, file.name, signal))
+        return unwrap(await ctx.remote.insight.storeUpload(sessionId, uploaded.receiptId, kind, signal))
+      },
       register: async (path: string, kind: SourceKind, signal: AbortSignal) => (
         unwrap(await ctx.remote.insight.register(sessionId, path, kind, signal))
       ),

@@ -28,6 +28,7 @@ const project: InsightProject = {
 function mount(overrides: Partial<InsightInjected> = {}) {
   const api = {
     load: vi.fn<InsightInjected['load']>().mockResolvedValue(project),
+    upload: vi.fn<InsightInjected['upload']>().mockResolvedValue('.insight/imports/uploaded.xlsx'),
     register: vi.fn<InsightInjected['register']>().mockImplementation(async (path, kind) => ({ ...source, path, kind, source_id: 'fresh-source', fingerprint: 'fresh-fingerprint' })),
     relations: vi.fn<InsightInjected['relations']>().mockResolvedValue({ source_id: 'fresh-source', relations: ['data'], warnings: [] }),
     describe: vi.fn<InsightInjected['describe']>().mockResolvedValue({
@@ -76,10 +77,22 @@ it('reimports the saved file and reruns with its filter, metrics, sort and limit
 it('clears fields from the previous file when importing a different source', async () => {
   mount()
   await restore()
-  fireEvent.change(screen.getByPlaceholderText('Data file path inside the workspace'), { target: { value: 'other.csv' } })
+  fireEvent.change(screen.getByPlaceholderText<HTMLInputElement>('Data file path inside the workspace'), { target: { value: 'other.csv' } })
   fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
   await waitFor(() => { expect(screen.queryByRole('button', { name: 'data.amount' })).toBeNull() })
   expect((await screen.findByRole('button', { name: 'Run analysis' })).hasAttribute('disabled')).toBe(true)
+})
+
+it('selects a local spreadsheet, uploads it, and registers its workspace copy', async () => {
+  const api = mount()
+  await screen.findByText('old-query')
+  const file = new File(['workbook bytes'], 'selected.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  fireEvent.change(screen.getByLabelText('Choose file'), { target: { files: [file] } })
+  expect((screen.getByRole<HTMLSelectElement>('combobox', { name: 'Format' })).value).toBe('xlsx')
+  expect((screen.getByPlaceholderText<HTMLInputElement>('Data file path inside the workspace')).value).toBe('selected.xlsx')
+  fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+  await waitFor(() => { expect(api.register).toHaveBeenCalledWith('.insight/imports/uploaded.xlsx', 'xlsx', expect.any(AbortSignal)) })
+  expect(api.upload).toHaveBeenCalledWith(file, 'xlsx', expect.any(AbortSignal))
 })
 
 it('ignores a query response that arrives after cancellation', async () => {
@@ -124,6 +137,17 @@ it('preserves the selected worksheet and both join keys when reconnecting a work
   fireEvent.click(await screen.findByRole('button', { name: 'Run analysis' }))
   await screen.findByText('fresh-query')
   expect(api.execute).toHaveBeenCalledWith('fresh-source', analysis, expect.any(AbortSignal))
+})
+
+it('explains an invalid scatter plot and defaults the Y axis to a numeric result column', async () => {
+  const chartResult: AnalysisResult = {
+    ...snapshot, columns: ['order_id', 'order_date', 'revenue'], rows: [['A1', '2026-09-01', 42]],
+  }
+  mount({ load: async () => ({ ...project, snapshot: chartResult,
+    chart: { type: 'scatter', title: 'orders', x: 'order_id', y: 'order_date' } }) })
+  await screen.findByText('Scatter plots need two numeric result columns. Adjust both axes.')
+  expect((screen.getByLabelText<HTMLSelectElement>('Y-axis column')).value).toBe('revenue')
+  expect(screen.getByRole('button', { name: 'Export PNG' }).hasAttribute('disabled')).toBe(true)
 })
 
 it('keeps the prior snapshot and shows explanation errors', async () => {

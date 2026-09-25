@@ -1,4 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { afterEach, expect, it, vi } from 'vitest'
 import { InsightController } from '../src/index.ts'
@@ -23,6 +26,24 @@ function fixture(execute: (request: { name: string; arguments: unknown }) => Pro
   const agent = { id: 'session-1', status: 'idle' } as Agent
   return { controller, agent }
 }
+
+it('copies a selected upload into the same Session workspace', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'insight-upload-'))
+  try {
+    const ctx = new Context()
+    roots.push(ctx)
+    const file = { attachmentId: 'file-1', name: 'sales.xlsx', bytes: 4 }
+    ctx.provide('tools', { execute: async () => mcp({}) } as never)
+    ctx.provide('fileUploads', { resolve: (_agent: Agent, receiptId: string) => receiptId === 'valid-receipt' ? file : undefined } as never)
+    ctx.provide('attachments', { readFileStream: async function* () { yield Uint8Array.of(1, 2, 3, 4) } } as never)
+    const controller = new InsightController(ctx)
+    const agent = { id: 'session-1', session: { header: { cwd } } } as Agent
+    await expect(controller.storeUpload(agent, 'missing', 'xlsx', new AbortController().signal)).rejects.toThrow('unavailable')
+    const path = await controller.storeUpload(agent, 'valid-receipt', 'xlsx', new AbortController().signal)
+    expect(path).toMatch(/^\.insight\/imports\/[a-f0-9-]+\.xlsx$/u)
+    expect(await readFile(join(cwd, path))).toEqual(Buffer.from([1, 2, 3, 4]))
+  } finally { await rm(cwd, { recursive: true, force: true }) }
+})
 
 it('returns the structured source payload from Insight MCP', async () => {
   const source = { source_id: 'source-1', kind: 'xlsx', path: 'sales.xlsx', fingerprint: 'sha256:abc', warnings: [] }

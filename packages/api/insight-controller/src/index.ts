@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -20,7 +21,7 @@ interface Verification { readonly query_id: string; readonly valid: boolean; rea
 
 /** Session-scoped bridge from the browser workbench to the registered Insight MCP tools. */
 export class InsightController extends TypertRemoteService {
-  static inject = ['tools']
+  static inject = ['tools', 'attachments', 'fileUploads']
   private readonly active = new Set<string>()
 
   constructor(ctx: Context) { super(ctx, 'insightController', { namespace: 'insight' }) }
@@ -35,6 +36,28 @@ export class InsightController extends TypertRemoteService {
    */
   @Remote register(agent: Agent, path: string, kind: SourceKind, signal: AbortSignal): Promise<SourceInfo> {
     return this.run(agent, NAMES.register, { path, kind }, signal)
+  }
+  /** Copy a browser-uploaded file into this Session's workspace for Insight MCP. */
+  @Remote async storeUpload(agent: Agent, receiptId: string, kind: SourceKind, signal: AbortSignal): Promise<string> {
+    signal.throwIfAborted()
+    if (!(['csv', 'xlsx', 'sqlite', 'duckdb'] as readonly string[]).includes(kind)) {
+      throw new RemoteError('gateway/bad-request', 'Unsupported Insight source format', {})
+    }
+    const uploads = this.ctx.get('fileUploads') as { resolve(agent: Agent, receiptId: string): FileAttachmentRef | undefined } | undefined
+    const file = uploads?.resolve(agent, receiptId)
+    if (file === undefined) throw new RemoteError('gateway/bad-request', 'The selected file upload is unavailable', {})
+    const cwd = agent.session.header.cwd
+    if (cwd === undefined) throw new RemoteError('gateway/bad-request', 'This session has no workspace', {})
+    const relativePath = `.insight/imports/${randomUUID()}.${kind}`
+    const target = join(cwd, relativePath)
+    await mkdir(join(cwd, '.insight', 'imports'), { recursive: true })
+    try {
+      await writeFile(target, this.ctx.attachments.readFileStream(file, signal), { flag: 'wx', signal })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') await rm(target, { force: true }).catch(() => {})
+      throw error
+    }
+    return relativePath
   }
   /**
    * Discover relations in a registered source.
